@@ -5,7 +5,7 @@ from pytube import YouTube
 import ssl
 import os
 import requests
-
+import io
 
 
 app = Flask(__name__)
@@ -81,6 +81,39 @@ def downloadVideo():
         app.logger.error(f"An error occurred: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/downloadMp3', methods=['POST'])
+def downloadMp3():
+    try:
+        data = request.json
+        if not data or 'url' not in data:
+            return jsonify({'error': 'No URL provided'}), 400
+
+        url = data['url']
+        yt = YouTube(url)
+        stream = yt.streams.filter(only_audio=True).first()
+
+        # Sanitize the filename
+        safe_title = "".join([c for c in yt.title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        filename = f"{safe_title}.mp3"
+
+        def generate():
+            buffer = io.BytesIO()
+            stream.stream_to_buffer(buffer)
+            buffer.seek(0)
+            yield from buffer
+
+        return Response(
+            generate(),
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{filename}\"",
+                "Content-Type": "audio/mpeg"
+            }
+        )
+
+    except Exception as e:
+        app.logger.error(f"An error occurred: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("Starting Flask server...")
