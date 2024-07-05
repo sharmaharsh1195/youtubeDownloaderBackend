@@ -6,7 +6,7 @@ import ssl
 import os
 import requests
 
-ssl._create_default_https_context = ssl._create_stdlib_context
+
 
 app = Flask(__name__)
 CORS(app)
