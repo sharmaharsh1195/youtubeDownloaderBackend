@@ -1,24 +1,27 @@
-from flask import Flask, request, jsonify,Response,stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import certifi
 from pytube import YouTube
+from pytube.cipher import Cipher
 import ssl
 import os
 import requests
 import io
-from pytube.innertube import _default_clients
-_default_clients["ANDROID_MUSIC"] = _default_clients["ANDROID_CREATOR"]
 
 app = Flask(__name__)
 CORS(app)
 
-SAVE_PATH = os.path.join(os.getcwd(), "Downloads") # Changed to relative path
+SAVE_PATH = os.path.join(os.getcwd(), "Downloads")
+
+def get_video_info(url):
+    yt = YouTube(url)
+    yt.bypass_age_gate()
+    video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+    return yt, video
 
 @app.route('/getData')
 def getData():
     return "This is your data "
-
-
 
 @app.route('/getVideoInfo', methods=['POST'])
 def getVideo():
@@ -31,8 +34,7 @@ def getVideo():
             return jsonify({'error': 'No URL provided or data is not in JSON format'}), 400
 
         url = data['url']
-        yt = YouTube(url)
-        video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+        yt, video = get_video_info(url)
 
         # Stream the video content
         r = requests.get(video.url, stream=True)
@@ -48,10 +50,6 @@ def getVideo():
         app.logger.error(f"An error occurred: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-
-
-
-
 @app.route('/downloadVideo', methods=['POST'])
 def downloadVideo():
     try:
@@ -60,8 +58,7 @@ def downloadVideo():
             return jsonify({'error': 'No URL provided'}), 400
 
         url = data['url']
-        yt = YouTube(url)
-        video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+        yt, video = get_video_info(url)
 
         def generate():
             response = requests.get(video.url, stream=True)
@@ -82,7 +79,6 @@ def downloadVideo():
         app.logger.error(f"An error occurred: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/downloadMp3', methods=['POST'])
 def downloadMp3():
     try:
@@ -91,7 +87,7 @@ def downloadMp3():
             return jsonify({'error': 'No URL provided'}), 400
 
         url = data['url']
-        yt = YouTube(url)
+        yt, _ = get_video_info(url)
         stream = yt.streams.filter(only_audio=True).first()
 
         # Sanitize the filename
