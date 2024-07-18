@@ -6,7 +6,8 @@ import ssl
 import os
 import requests
 import io
-
+from pytube.innertube import _default_clients
+_default_clients["ANDROID_MUSIC"] = _default_clients["ANDROID_CREATOR"]
 
 app = Flask(__name__)
 CORS(app)
