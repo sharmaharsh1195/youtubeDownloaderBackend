@@ -1,54 +1,20 @@
-from flask import Flask, request, jsonify,Response,stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_cors import CORS
-import certifi
-from pytube import YouTube
 import ssl
 import os
 import requests
 import io
+from pytubefix import YouTube
+from pytubefix.cli import on_progress
+
+ssl._create_default_https_context = ssl._create_stdlib_context
 
 app = Flask(__name__)
 CORS(app)
 
-SAVE_PATH = os.path.join(os.getcwd(), "Downloads") # Changed to relative path
-
 @app.route('/getData')
 def getData():
-    return "This is your data "
-
-
-
-@app.route('/getVideoInfo', methods=['POST'])
-def getVideo():
-    try:
-        ctx = ssl.create_default_context(cafile=certifi.where())
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        data = request.json
-        if not data or 'url' not in data:
-            return jsonify({'error': 'No URL provided or data is not in JSON format'}), 400
-
-        url = data['url']
-        yt = YouTube(url)
-        video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-
-        # Stream the video content
-        r = requests.get(video.url, stream=True)
-
-        def generate():
-            for chunk in r.iter_content(chunk_size=4096):
-                yield chunk
-
-        return Response(generate(), content_type=r.headers['Content-Type'],
-                        headers={'Content-Disposition': f'attachment; filename="{yt.title}.mp4"'})
-
-    except Exception as e:
-        app.logger.error(f"An error occurred: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-
-
+    return "This is your data"
 
 @app.route('/downloadVideo', methods=['POST'])
 def downloadVideo():
@@ -58,16 +24,15 @@ def downloadVideo():
             return jsonify({'error': 'No URL provided'}), 400
 
         url = data['url']
-        yt = YouTube(url)
-        video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+        yt = YouTube(url, on_progress_callback=on_progress)
+        video = yt.streams.get_highest_resolution()
 
         def generate():
             response = requests.get(video.url, stream=True)
             for chunk in response.iter_content(chunk_size=4096):
                 yield chunk
 
-        # Sanitize the filename
-        safe_title = "".join([c for c in yt.title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        safe_title = "".join([c for c in yt.title if c.isalpha() or c.isdigit() or c == ' ']).rstrip()
         filename = f"{safe_title}.mp4"
 
         return Response(stream_with_context(generate()),
@@ -80,7 +45,6 @@ def downloadVideo():
         app.logger.error(f"An error occurred: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/downloadMp3', methods=['POST'])
 def downloadMp3():
     try:
@@ -89,26 +53,22 @@ def downloadMp3():
             return jsonify({'error': 'No URL provided'}), 400
 
         url = data['url']
-        yt = YouTube(url)
-        stream = yt.streams.filter(only_audio=True).first()
-
-        # Sanitize the filename
-        safe_title = "".join([c for c in yt.title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
-        filename = f"{safe_title}.mp3"
+        yt = YouTube(url, on_progress_callback=on_progress)
+        audio = yt.streams.get_audio_only()
 
         def generate():
-            buffer = io.BytesIO()
-            stream.stream_to_buffer(buffer)
-            buffer.seek(0)
-            yield from buffer
+            response = requests.get(audio.url, stream=True)
+            for chunk in response.iter_content(chunk_size=4096):
+                yield chunk
 
-        return Response(
-            generate(),
-            headers={
-                "Content-Disposition": f"attachment; filename=\"{filename}\"",
-                "Content-Type": "audio/mpeg"
-            }
-        )
+        safe_title = "".join([c for c in yt.title if c.isalpha() or c.isdigit() or c == ' ']).rstrip()
+        filename = f"{safe_title}.mp3"
+
+        return Response(stream_with_context(generate()),
+                        headers={
+                            "Content-Disposition": f"attachment; filename=\"{filename}\"",
+                            "Content-Type": "audio/mpeg"
+                        })
 
     except Exception as e:
         app.logger.error(f"An error occurred: {str(e)}")
